@@ -187,4 +187,4 @@ async def rps(ctx, choice):
         em = nextcord.Embed(title="Rock Paper Scissors", description=f"{ctx.author.mention} chose {choice} i choose {random.choice(choices)}", color=nextcord.Color.random())
         await ctx.send(embed=em)
 
-bot.run("MTA0ODU1MjM1NDE2Njg3ODI2OA.GyyjPG.ZH_6idPLbi4vEAllpmRF-ztQN3pG10g6c0Nvhw")
+bot.run("token")
