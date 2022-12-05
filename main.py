@@ -1,6 +1,8 @@
 from nextcord.ext import commands
 import nextcord
 import aiosqlite
+import asyncio
+import random
 
 class AddUser(nextcord.ui.Modal):
     def __init__(self, channel):
@@ -174,5 +176,15 @@ async def unlock(ctx, channel : nextcord.TextChannel=None):
     await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite)
     await ctx.send('Channel unlocked.')
 
-    
-bot.run("token")
+
+@bot.command()
+async def rps(ctx, choice):
+    choices=["rock", "paper", "scissors"]
+    if choice not in choices:
+        embed = nextcord.Embed(title="Error", description="Please choose rock, paper or scissors", color=nextcord.Color.red())
+        await ctx.send(embed=embed)
+    else:
+        em = nextcord.Embed(title="Rock Paper Scissors", description=f"{ctx.author.mention} chose {choice} i choose {random.choice(choices)}", color=nextcord.Color.random())
+        await ctx.send(embed=em)
+
+bot.run("MTA0ODU1MjM1NDE2Njg3ODI2OA.GyyjPG.ZH_6idPLbi4vEAllpmRF-ztQN3pG10g6c0Nvhw")
