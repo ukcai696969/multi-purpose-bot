@@ -1,4 +1,0 @@
-discord.py
-easy-pil
-aoisqlite
-random

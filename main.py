@@ -1,163 +1,178 @@
-import discord
-from discord.ext import commands
+from nextcord.ext import commands
+import nextcord
 import aiosqlite
-import easy_pil
-from easy_pil import *
-import asyncio
-import os
-import random
 
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
+class AddUser(nextcord.ui.Modal):
+    def __init__(self, channel):
+        super().__init__(
+            "Add User",
+            timeout=300,
+        )
+        self.channel = channel
 
-@bot.event
-async def on_ready():
-    print("Bot is ready")
-    setattr(bot, "db", await aiosqlite.connect("level.db"))
-    await asyncio.sleep(3)
-    async with bot.db.cursor() as cursor:
-        await cursor.execute("CREATE TABLE IF NOT EXISTS levels (level INTEGER, xp INTEGER, user INTEGER, guild INTEGER)")
-        await cursor.execute("CREATE TABLE IF NOT EXISTS levelSettings (levelsys BOOL, role INTEGER, levelreq INTEGER, guild INTEGER)")
-        await bot.db.commit()
-
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-    author = message.author
-    guild = message.guild
-    async with bot.db.cursor() as cursor:
-        await cursor.execute("SELECT levelsys FROM levelSettings WHERE guild = ?", (guild.id,))
-        levelsys = await cursor.fetchone()
-        if levelsys and not levelsys[0]:
-            return
-        await cursor.execute("SELECT xp FROM levels WHERE user = ? AND guild = ?", (author.id, guild.id,))
-        xp = await cursor.fetchone()
-        await cursor.execute("SELECT level FROM levels WHERE user = ? AND guild = ?", (author.id, guild.id,))
-        level = await cursor.fetchone()
-
-        if not xp or not level:
-            await cursor.execute("INSERT INTO levels (level, xp, user, guild) VALUES (?, ?, ?, ?)", (0, 0, author.id, guild.id,))
-            await bot.db.commit()
-            return
-        
-        try:
-            xp = xp[0]
-            level = level[0]
-        except TypeError:
-            xp = 0
-            level = 0
-        
-        if level < 5:
-            xp += random.randint(10, 15)
-            await cursor.execute("UPDATE levels SET xp = ? WHERE user = ? AND guild = ?", (xp, author.id, guild.id,))
-        else:
-            rand = random.randint(1, (level//4))
-            if rand == 1:
-                xp += random.randint(10, 15)
-                await cursor.execute("UPDATE levels SET xp = ? WHERE user = ? AND guild = ?", (xp, author.id, guild.id,)) 
-        if xp >= 100:
-            level += 1
-            await cursor.execute("UPDATE levels SET level = ? WHERE user = ? AND guild = ?", (level, author.id, guild.id,))
-            await cursor.execute("UPDATE levels SET xp = ? WHERE user = ? AND guild = ?", (0, author.id, guild.id,))
-            await message.channel.send(f"{author.mention} has leveled up to level {level}")
-
-        await bot.db.commit()
-        await bot.process_commands(message)
-
-@bot.command()
-async def level(ctx, member: discord.Member = None):
-    if not member:
-        member = ctx.author
-    async with bot.db.cursor() as cursor:
-        await cursor.exexute("SELECT levelsys FROM levelSettings WHERE guild = ?", (ctx.guild.id,))
-        levelsys = await cursor.fetchone()
-        if levelsys and not levelsys[0]:
-            return 
-        await cursor.execute("SELECT xp FROM levels WHERE user = ? AND guild = ?", (member.id, ctx.guild.id,))
-        xp = await cursor.fetchone()
-        await cursor.execute("SELECT level FROM levels WHERE user = ? AND guild = ?", (member.id, ctx.guild.id,))
-        level = await cursor.fetchone()
-        if not xp or not level:
-            await cursor.execute("INSERT INTO levels (level, xp, user, guild) VALUES (?, ?, ?, ?)", (0, 0, member.id, ctx.guild.id,))
-
-        try:
-            xp = xp[0]
-            level = level[0]
-        except TypeError:
-            xp = 0
-            level = 0
-        
-        user_data = {
-            "name": f"{member.name}#{member.discriminator}",
-            "xp": xp, 
-            "level": level,
-            "next_level": 100,
-            "percentage": xp,
-        }
-    
-        background = Editor(Canvas((900, 300), color="#141414"))
-        profile_picture = await load_image_async(str(member.avatar.url))
-        profile = Editor(profile_picture).resize((150, 150)).circle_image()
-
-        popins = Font.poppins(size=40)
-        popins_small = Font.poppins(size=30)
-
-        card_right_shape = [(600, 0), (750, 300), (900, 300), (900, 0)]
-
-        background.polygon(card_right_shape, color="#FFFFFF")
-        background.paste(profile, (30, 30))
-
-        background.rectangle((30, 220), width=650, height=40, color="#FFFFFF")
-        background.bar((30, 220), max_width=650, height=40, percentage=user_data["percentage"], color="#FFFFFF", radius=20)
-        background.text((200, 40), user_data["name"], font=popins, color="#FFFFFF")
-
-        background.rectangle((200, 100), width=350, height=2, fill="#FFFFFF")
-        background.text(
-            (200, 120),
-            f"Level - {user_data['level']} | XP - {user_data['xp']}/{user_data['next_level']}",
-            font=popins_small,
-            color="#FFFFFF"
+        self.user = nextcord.ui.TextInput(
+            label="User ID",
+            min_length=2,
+            max_length=32,
+            required=True,
+            placeholder="User ID(MUST BE INT)"
         )
 
-        file = discord.File(fp=background.image_bytes, filename="level.png")
-        await ctx.send(file=file)
-
-@bot.group()
-async def slvl(ctx):
-    return
+        self.add_item(self.user)
     
-@slvl.command(alias=["e"])
-@commands.has_guild_permissions(manage_guild=True)
-async def enable(ctx):
-    async with bot.db.cursor() as cursor:
-        await cursor.execute("SELECT levelsys FROM levelSettings WHERE guild = ?", (ctx.guild.id,))
-        levelsys = await cursor.fetchone()
-        if levelsys:
-            if levelsys[0]:
-                return await ctx.send("Leveling system is already enabled")
-            await cursor.execute("UPDATE levelSettings SET levelsys = ? WHERE guild = ?", (True, ctx.guild.id,))
-        else:
-            await cursor.execute("INSERT INTO levelSettings VALUES (?, ?, ?, ?)", (True, 0, 0, ctx.guild.id,))
-        await ctx.send("Leveling system enabled")
-    await bot.db.commit()
+    async def callback(self, interaction: nextcord.Interaction) -> None:
+        user = interaction.guild.get_member(int(self.user.value))
+        if user is None:
+            return await interaction.response.send_message(f"Invaild User ID", ephemeral=True)
+        overwirte = nextcord.PermissionOverwrite()
+        overwirte.read_messages = True
+        await self.channel.set_permissions(user, overwrite=overwirte)
+        await interaction.response.send_message(f"Added {user.mention} to {self.channel.mention}", ephemeral=True)
 
-@slvl.command(alias=["d"])
-@commands.has_guild_permissions(manage_guild=True)
-async def disable(ctx):
-    async with bot.db.cursor() as cursor:
-        await cursor.execute("SELECT levelsys FROM levelSettings WHERE guild = ?", (ctx.guild.id,))
-        levelsys = await cursor.fetchone()
-        if levelsys:
-            if not levelsys[0]:
-                return await ctx.send("Leveling system is already diabled")
-            await cursor.execute("UPDATE levelSettings SET levelsys = ? WHERE guild = ?", (False, ctx.guild.id,))
-        else:
-            await cursor.execute("INSERT INTO levelSettings VALUES (?, ?, ?, ?)", (False, 0, 0, ctx.guild.id,))
-        await ctx.send("Leveling system disabled")
-    await bot.db.commit()
+
+
+class RemoveUser(nextcord.ui.Modal):
+    def __init__(self, channel):
+        super().__init__(
+            "Remove User",
+            timeout=300,
+        )
+        self.channel = channel
+
+        self.user = nextcord.ui.TextInput(
+            label="User ID",
+            min_length=2,
+            max_length=32,
+            required=True,
+            placeholder="User ID(MUST BE INT)"
+        )
+
+        self.add_item(self.user)
     
+    async def callback(self, interaction: nextcord.Interaction) -> None:
+        user = interaction.guild.get_member(int(self.user.value))
+        if user is None:
+            return await interaction.response.send_message(f"Invaild User ID", ephemeral=True)
+        overwirte = nextcord.PermissionOverwrite()
+        overwirte.read_messages = False
+        await self.channel.set_permissions(user, overwrite=overwirte)
+        await interaction.response.send_message(f"Removed {user.mention} to {self.channel.mention}", ephemeral=True)
 
 
 
-bot.run("token here")
+
+
+class CreateTicket(nextcord.ui.View):
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+    @nextcord.ui.button(label="Create Ticket", style=nextcord.ButtonStyle.green, custom_id="create_ticket")
+    async def create_ticket(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        msg = await interaction.response.send_message("Ticket is being created...", ephemeral=True)
+        async with self.bot.db.cursor() as cursor:
+            await cursor.execute("SELECT role FROM roles WHERE guild = ?", (interaction.guild.id,))
+            role = await cursor.fetchone()
+            if role:
+                overwrites = {
+                    interaction.guild.default_role: nextcord.PermissionOverwrite(read_messages=False),
+                    interaction.guild.me: nextcord.PermissionOverwrite(read_messages=True),
+                    interaction.guild.get_role(role[0]): nextcord.PermissionOverwrite(read_messages=True)
+             }
+
+            else:
+                overwrites = {
+                    interaction.guild.default_role: nextcord.PermissionOverwrite(read_messages=False),
+                    interaction.guild.me: nextcord.PermissionOverwrite(read_messages=True)
+                }
+
+
+
+        channel = await interaction.guild.create_text_channel(f"ticket-{interaction.user.name}", overwrites=overwrites)
+        await msg.edit(content=f"Ticket created! {channel.mention}")
+        embed = nextcord.Embed(title="Ticket Created", description=f"Ticket created by {interaction.user.mention}", color=nextcord.Color.green())
+        await channel.send(embed=embed, view=TicketSettings())
+
+
+class TicketSettings(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @nextcord.ui.button(label="Close Ticket", style=nextcord.ButtonStyle.red, custom_id="close_ticket")
+    async def close_ticket(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.send_message("Ticket is being closed...", ephemeral=True)
+        await interaction.channel.delete()
+        await interaction.user.send(f"Ticket in {interaction.guild.name} has been closed. By {interaction.user.mention}")
+    
+    @nextcord.ui.button(label="Add User", style=nextcord.ButtonStyle.blurple, custom_id="add_user")
+    async def add_user(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(AddUser(interaction.channel))
+
+    @nextcord.ui.button(label="Remove User", style=nextcord.ButtonStyle.blurple, custom_id="remove_user")
+    async def remove_user(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(RemoveUser(interaction.channel))
+
+
+class Bot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.persistent_views_added = False
+
+    async def on_ready(self):
+        if not self.persistent_views_added:
+            self.add_view(CreateTicket(self))
+            self.add_view(TicketSettings())
+            self.persistent_views_added = True
+            print("Persistent views added")
+            self.db = await aiosqlite.connect("tickets.db")
+            async with self.db.cursor() as cursor:
+                await cursor.execute("CREATE TABLE IF NOT EXISTS roles (role INTEGER, guild INTEGER)")
+            print("Database connected")
+
+        print(f"Logged in as {self.user}")
+        print("Ready!")
+
+
+intents = nextcord.Intents.all()
+bot = Bot(command_prefix="!", intents=intents)
+
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setup_ticket(ctx):
+    em = nextcord.Embed(title="Ticket", description="Click the button to create a ticket")
+    await ctx.send(embed=em, view=CreateTicket(bot))
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setup_role(ctx, role: nextcord.Role):
+    async with bot.db.cursor() as cursor:
+        await cursor.execute("SELECT role FROM roles WHERE guild = ?", (ctx.guild.id,))
+        role2 = await cursor.fetchone()
+        if role2:
+            await cursor.execute("UPDATE roles SET role = ? WHERE guild = ?", (role.id, ctx.guild.id))
+            await ctx.send(f"Tickets Auto-Assign Role has been updated to {role.mention}")
+        else:
+            await cursor.execute("INSERT INTO roles VALUES (?, ?)", (role.id, ctx.guild.id,))
+            await ctx.send(f"Tickets Auto-Assign Role Added")
+        await bot.db.commit()
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def lock(ctx, channel : nextcord.TextChannel=None):
+    channel = channel or ctx.channel
+    overwrite = channel.overwrites_for(ctx.guild.default_role)
+    overwrite.send_messages = False
+    await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite)
+    await ctx.send('Channel locked.')
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def unlock(ctx, channel : nextcord.TextChannel=None):
+    channel = channel or ctx.channel
+    overwrite = channel.overwrites_for(ctx.guild.default_role)
+    overwrite.send_messages = True
+    await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite)
+    await ctx.send('Channel unlocked.')
+
+    
+bot.run("token")

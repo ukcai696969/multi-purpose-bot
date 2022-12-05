@@ -14,3 +14,5 @@ this is a discord bot that can do many things it has a level system right now bu
 3. make your command
 
 ## enjoy
+This bot is under development so it will be updated soon
+MIT License
